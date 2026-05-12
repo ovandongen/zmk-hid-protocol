@@ -16,7 +16,6 @@
   <ItemGroup Condition="!$(TargetFramework.Contains('windows'))">
     <Compile Remove="Transport/Windows/WindowsBleRawHidLayerSource.cs" />
     <Compile Remove="Transport/Windows/WindowsCompositeLayerSource.cs" />
-    <Compile Remove="ActiveWindow/WinActiveWindowMonitor.cs" />
   </ItemGroup>
 
   <ItemGroup>
