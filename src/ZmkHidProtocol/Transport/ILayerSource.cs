@@ -2,8 +2,9 @@ namespace ZmkHidProtocol.Transport;
 
 /// <summary>
 /// A source that reads Raw HID reports from a ZMK keyboard and surfaces
-/// layer-state and per-key events. Implementations exist for macOS (IOKit),
-/// Linux (/dev/hidraw), and Windows (HidSharp USB + WinRT BLE).
+/// layer-state and per-key events. The canonical implementation is
+/// <see cref="RawHidLayerSource"/>, which uses HidApi.Net to work on
+/// Windows, macOS, and Linux — including HoGP-paired BLE keyboards.
 ///
 /// <para>Implementations may invoke events on any thread. Subscribers that
 /// touch UI state must marshal to their own UI thread.</para>
