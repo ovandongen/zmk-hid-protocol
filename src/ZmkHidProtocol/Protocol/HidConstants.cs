@@ -24,23 +24,4 @@ public static class HidConstants
         public const byte GetConfigId = 0xFB;
         public const byte SetLayerState = 0xFC;
     }
-
-    /// <summary>
-    /// BLE vendor GATT service used on Windows (HoGP 0x1812 is claimed
-    /// exclusively by Windows' HID driver). macOS and Linux read from 0x1812
-    /// directly; both services carry identical payloads.
-    /// </summary>
-    public static class BleVendorService
-    {
-        public static readonly Guid ServiceUuid =
-            new("4d4f4552-474f-5241-5748-49445f535643");
-
-        /// <summary>Notifications: keyboard → host.</summary>
-        public static readonly Guid TxCharacteristicUuid =
-            new("4d4f4552-474f-5241-5748-49445f545843");
-
-        /// <summary>Writes: host → keyboard.</summary>
-        public static readonly Guid RxCharacteristicUuid =
-            new("4d4f4552-474f-5241-5748-49445f525843");
-    }
 }
