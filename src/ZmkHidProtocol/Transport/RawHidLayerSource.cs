@@ -45,6 +45,14 @@ public sealed class RawHidLayerSource : ILayerSource, ICommandSink
     public int CurrentLayer => _currentLayer;
     public string SourceName => _sourceName;
 
+    /// <summary>
+    /// hidapi path of the currently open device, or null when disconnected.
+    /// Lets the capability bus exclude the keyboard's own handle as a defensive
+    /// secondary to matcher-based exclusion (the identical-VID/PID/name case the
+    /// matcher cannot split). Set on connect, cleared on disconnect.
+    /// </summary>
+    public string? OpenDevicePath { get; private set; }
+
     public void SetMatcher(IDeviceMatcher? matcher)
     {
         _matcher = matcher;
@@ -119,6 +127,7 @@ public sealed class RawHidLayerSource : ILayerSource, ICommandSink
             {
                 device = info.ConnectToDevice();
                 _device = device;
+                OpenDevicePath = info.Path;
 
                 _sourceName = string.IsNullOrWhiteSpace(info.ProductString)
                     ? "Raw HID"
@@ -151,6 +160,7 @@ public sealed class RawHidLayerSource : ILayerSource, ICommandSink
             {
                 try { device?.Dispose(); } catch { }
                 _device = null;
+                OpenDevicePath = null;
                 if (_connected)
                 {
                     SetConnected(false);
