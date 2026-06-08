@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.Text;
+using ZmkHidProtocol.Capabilities;
 
 namespace ZmkHidProtocol.Protocol;
 
@@ -77,6 +78,38 @@ public static class RawHidProtocol
         if (payload.Length < 2) return null;
         if (payload[0] != HidConstants.Outbound.ConfigId) return null;
         return ReadNullTerminatedString(payload[1..]);
+    }
+
+    /// <summary>
+    /// Parses a single 0xF8 manifest-entry report. Returns null if the buffer
+    /// isn't one. The string chunk (bytes 6+) is returned raw;
+    /// <see cref="ManifestAssembler"/> reassembles multi-report entries and
+    /// trims the null terminator.
+    /// </summary>
+    public static ManifestEntry? TryParseManifestEntry(ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length < ManifestEntry.HeaderSize) return null;
+        if (payload[0] != HidConstants.Outbound.ManifestEntry) return null;
+        return new ManifestEntry(
+            Seq: payload[1],
+            Flags: payload[2],
+            Role: payload[3],
+            Tier: payload[4],
+            Confirm: payload[5],
+            Chunk: payload[ManifestEntry.HeaderSize..].ToArray());
+    }
+
+    /// <summary>
+    /// Parses a 0xF7 confirmation report: the hub-assigned ref (uint16 LE at
+    /// bytes 1-2) echoed by the handler, plus the ok flag (byte 3). Returns
+    /// null if the buffer isn't a confirmation.
+    /// </summary>
+    public static ConfirmAck? TryParseConfirm(ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length < 4) return null;
+        if (payload[0] != HidConstants.Outbound.Confirm) return null;
+        var reference = (ushort)(payload[1] | (payload[2] << 8));
+        return new ConfirmAck(reference, payload[3] == 0x01);
     }
 
     private static string ReadNullTerminatedString(ReadOnlySpan<byte> bytes)
