@@ -48,7 +48,9 @@ public sealed class RawHidBusDevice : ICapabilityDevice, IDisposable
     public void Start()
     {
         if (_runTask is not null) return;
-        _device = _info.ConnectToDevice();
+        // Serialize the open against any concurrent enumerate/open — hidapi's
+        // macOS init is not thread-safe (see HidGlobalLock).
+        lock (HidGlobalLock.Gate) _device = _info.ConnectToDevice();
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
         _runTask = Task.Run(() => RunLoop(ct));

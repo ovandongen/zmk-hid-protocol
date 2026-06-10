@@ -150,8 +150,11 @@ public sealed class RawHidDeviceBus : IDisposable
 
     private void Reconcile()
     {
-        IEnumerable<HidDeviceInfo> devices;
-        try { devices = Hid.Enumerate(); }
+        List<HidDeviceInfo> devices;
+        // Serialize against the keyboard source's enumerate loop — concurrent
+        // hidapi enumeration aborts the process on macOS. Materialize inside the
+        // lock so the native enumeration completes before the gate is released.
+        try { lock (HidGlobalLock.Gate) devices = Hid.Enumerate().ToList(); }
         catch (Exception ex)
         {
             LibLog.Debug("RawHidBus", $"Hid.Enumerate failed: {ex.Message}");

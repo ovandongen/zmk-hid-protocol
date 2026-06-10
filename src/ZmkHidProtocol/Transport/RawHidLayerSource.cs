@@ -125,7 +125,7 @@ public sealed class RawHidLayerSource : ILayerSource, ICommandSink
             Device? device = null;
             try
             {
-                device = info.ConnectToDevice();
+                lock (HidGlobalLock.Gate) device = info.ConnectToDevice();
                 _device = device;
                 OpenDevicePath = info.Path;
 
@@ -198,8 +198,11 @@ public sealed class RawHidLayerSource : ILayerSource, ICommandSink
 
     private HidDeviceInfo? TryFindDevice()
     {
-        IEnumerable<HidDeviceInfo> devices;
-        try { devices = Hid.Enumerate(); }
+        List<HidDeviceInfo> devices;
+        // Serialize against the capability bus's enumerate loop — concurrent
+        // hidapi enumeration aborts the process on macOS. Materialize inside the
+        // lock so the native enumeration completes before the gate is released.
+        try { lock (HidGlobalLock.Gate) devices = Hid.Enumerate().ToList(); }
         catch (Exception ex)
         {
             LibLog.Debug("RawHid", $"Hid.Enumerate failed: {ex.Message}");
