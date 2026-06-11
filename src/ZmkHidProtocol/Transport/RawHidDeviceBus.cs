@@ -30,7 +30,7 @@ public readonly record struct RawHidCandidate(
 /// change. Mirrors the reference host's <c>find_devices</c> dedup + the keyboard
 /// exclusion LViz adds on top.
 /// </summary>
-public sealed class RawHidDeviceBus : IDisposable
+public sealed class RawHidDeviceBus : ICapabilityDeviceBus, IDisposable
 {
     private const int PollDelayMs = 2000;
 
