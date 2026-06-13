@@ -60,6 +60,101 @@ public class ActionReportBuilderTests
     }
 
     [Fact]
+    public void PointingAction_RejectsRgbByte_EvenThoughItIsRoutable()
+    {
+        // 0xD1 is a routable action (core.rgb.set), but not a pointing one — the
+        // pointing builder must still reject it.
+        Assert.True(CapabilityCatalog.IsRoutableAction(HidConstants.RgbAction.Set));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => ActionReportBuilder.PointingAction(HidConstants.RgbAction.Set, 0));
+    }
+
+    [Fact]
+    public void RgbSet_EncodesMaskAndFieldsAtFixedOffsets()
+    {
+        var report = ActionReportBuilder.RgbSet(
+            new RgbSet(On: true, Hue: 300, Sat: 80, Val: 50, Effect: 3));
+
+        Assert.Equal(HidConstants.ReportSize, report.Length);
+        Assert.Equal(HidConstants.RgbAction.Set, report[0]);
+
+        const byte expectedMask = HidConstants.RgbAction.SetMask.On
+            | HidConstants.RgbAction.SetMask.Hue
+            | HidConstants.RgbAction.SetMask.Sat
+            | HidConstants.RgbAction.SetMask.Val
+            | HidConstants.RgbAction.SetMask.Effect;
+        Assert.Equal(expectedMask, report[1]);
+
+        Assert.Equal(1, report[2]); // on
+        Assert.Equal(300, BinaryPrimitives.ReadUInt16LittleEndian(report.AsSpan(3, 2)));
+        Assert.Equal(80, report[5]);
+        Assert.Equal(50, report[6]);
+        Assert.Equal(3, report[7]);
+        for (int i = 8; i < report.Length; i++)
+            Assert.Equal(0, report[i]);
+    }
+
+    [Fact]
+    public void RgbSet_OnlyFlagsAndWritesPresentFields()
+    {
+        // Set just the brightness — every other field stays unflagged and zero.
+        var report = ActionReportBuilder.RgbSet(new RgbSet(Val: 25));
+
+        Assert.Equal(HidConstants.RgbAction.SetMask.Val, report[1]);
+        Assert.Equal(25, report[6]);
+        Assert.Equal(0, report[2]); // on not flagged
+        Assert.Equal(0, BinaryPrimitives.ReadUInt16LittleEndian(report.AsSpan(3, 2))); // hue not flagged
+        Assert.Equal(0, report[5]); // sat not flagged
+        Assert.Equal(0, report[7]); // effect not flagged
+    }
+
+    [Fact]
+    public void RgbSet_OffStateFlagsOnWithZeroPayload()
+    {
+        // On=false must still set the mask bit so the device applies the off state.
+        var report = ActionReportBuilder.RgbSet(new RgbSet(On: false));
+
+        Assert.Equal(HidConstants.RgbAction.SetMask.On, report[1]);
+        Assert.Equal(0, report[2]);
+    }
+
+    [Fact]
+    public void RgbSet_EmptyRequestHasZeroMask()
+    {
+        var report = ActionReportBuilder.RgbSet(new RgbSet());
+        Assert.Equal(HidConstants.RgbAction.Set, report[0]);
+        Assert.Equal(0, report[1]);
+    }
+
+    [Theory]
+    [InlineData(360, 0, 0)]   // hue past 359
+    [InlineData(0, 101, 0)]   // sat past 100
+    [InlineData(0, 0, 101)]   // val past 100
+    public void RgbSet_RejectsOutOfRangeHsb(int hue, int sat, int val)
+        => Assert.Throws<ArgumentOutOfRangeException>(
+            () => ActionReportBuilder.RgbSet(new RgbSet(Hue: (ushort)hue, Sat: (byte)sat, Val: (byte)val)));
+
+    [Fact]
+    public void RgbSetKey_EncodesIndexAndHsb()
+    {
+        var report = ActionReportBuilder.RgbSetKey(index: 12, hue: 200, sat: 90, val: 75);
+
+        Assert.Equal(HidConstants.ReportSize, report.Length);
+        Assert.Equal(HidConstants.RgbAction.SetKey, report[0]);
+        Assert.Equal(12, report[1]);
+        Assert.Equal(200, BinaryPrimitives.ReadUInt16LittleEndian(report.AsSpan(2, 2)));
+        Assert.Equal(90, report[4]);
+        Assert.Equal(75, report[5]);
+        for (int i = 6; i < report.Length; i++)
+            Assert.Equal(0, report[i]);
+    }
+
+    [Fact]
+    public void RgbSetKey_RejectsOutOfRangeHue()
+        => Assert.Throws<ArgumentOutOfRangeException>(
+            () => ActionReportBuilder.RgbSetKey(index: 0, hue: 400, sat: 0, val: 0));
+
+    [Fact]
     public void SetLayerBase_EncodesOpcodeAndLayerIndex()
     {
         var report = ActionReportBuilder.SetLayerBase(3);

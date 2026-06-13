@@ -175,4 +175,38 @@ public class RawHidProtocolTests
     {
         Assert.Equal(expected, RawHidProtocol.HighestActiveLayer(bitmask));
     }
+
+    private static byte[] RgbChangedReport(bool on, ushort hue, byte sat, byte val, byte effect)
+    {
+        var buf = new byte[32];
+        buf[0] = HidConstants.RgbAction.Changed;
+        buf[1] = (byte)(on ? 1 : 0);
+        BinaryPrimitives.WriteUInt16LittleEndian(buf.AsSpan(2, 2), hue);
+        buf[4] = sat;
+        buf[5] = val;
+        buf[6] = effect;
+        return buf;
+    }
+
+    [Theory]
+    [InlineData(true, 359, 100, 100, 4)]
+    [InlineData(false, 0, 0, 0, 0)]
+    [InlineData(true, 200, 50, 25, 2)]
+    public void TryParseRgbChanged_RoundTrips(bool on, ushort hue, byte sat, byte val, byte effect)
+    {
+        var state = RawHidProtocol.TryParseRgbChanged(RgbChangedReport(on, hue, sat, val, effect));
+        Assert.Equal(new Capabilities.RgbState(on, hue, sat, val, effect), state);
+    }
+
+    [Fact]
+    public void TryParseRgbChanged_WrongMessageType_ReturnsNull()
+    {
+        Assert.Null(RawHidProtocol.TryParseRgbChanged(KeyEventReport(0, true)));
+    }
+
+    [Fact]
+    public void TryParseRgbChanged_ShortBuffer_ReturnsNull()
+    {
+        Assert.Null(RawHidProtocol.TryParseRgbChanged(new byte[] { HidConstants.RgbAction.Changed, 1, 0, 0, 0, 0 }));
+    }
 }

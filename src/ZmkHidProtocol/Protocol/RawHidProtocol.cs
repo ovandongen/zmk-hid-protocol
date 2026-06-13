@@ -112,6 +112,23 @@ public static class RawHidProtocol
         return new ConfirmAck(reference, payload[3] == 0x01);
     }
 
+    /// <summary>
+    /// Parses a 0xD0 <c>core.rgb.changed</c> report into the device's latched
+    /// global RGB state: on flag (byte 1), hue (uint16 LE bytes 2-3), sat (byte 4),
+    /// val (byte 5), effect index (byte 6). Returns null if the buffer isn't one.
+    /// </summary>
+    public static RgbState? TryParseRgbChanged(ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length < 7) return null;
+        if (payload[0] != HidConstants.RgbAction.Changed) return null;
+        return new RgbState(
+            On: payload[1] != 0,
+            Hue: BinaryPrimitives.ReadUInt16LittleEndian(payload[2..4]),
+            Sat: payload[4],
+            Val: payload[5],
+            Effect: payload[6]);
+    }
+
     private static string ReadNullTerminatedString(ReadOnlySpan<byte> bytes)
     {
         var end = bytes.IndexOf((byte)0);
