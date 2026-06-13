@@ -97,4 +97,19 @@ public static class HidConstants
         public const byte SatMax = 100;
         public const byte ValMax = 100;
     }
+
+    /// <summary>
+    /// signal.* capability wire bytes — opaque host-defined triggers. The device
+    /// fires an id; all meaning lives in the listening host's config.
+    /// Fire-and-forget, device→host, no ack, no latched state. The host decodes
+    /// <see cref="Fire"/> via <see cref="RawHidProtocol.TryParseSignalFire"/>; it
+    /// is NOT a routable device→device action (the handler is the host itself),
+    /// so it stays out of <c>CapabilityCatalog.ActionIdByByte</c>. 0xC1/0xC2 are
+    /// reserved for a future signal.value / signal.delta (analog / relative input).
+    /// </summary>
+    public static class Signal
+    {
+        /// <summary>triggers · fire-and-forget: <c>[0xC0, id (uint8)]</c>.</summary>
+        public const byte Fire = 0xC0;
+    }
 }

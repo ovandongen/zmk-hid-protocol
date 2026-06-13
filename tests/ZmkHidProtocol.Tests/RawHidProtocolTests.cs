@@ -209,4 +209,33 @@ public class RawHidProtocolTests
     {
         Assert.Null(RawHidProtocol.TryParseRgbChanged(new byte[] { HidConstants.RgbAction.Changed, 1, 0, 0, 0, 0 }));
     }
+
+    private static byte[] SignalFireReport(byte id)
+    {
+        var buf = new byte[32];
+        buf[0] = HidConstants.Signal.Fire;
+        buf[1] = id;
+        return buf;
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(42)]
+    [InlineData(255)]
+    public void TryParseSignalFire_RoundTrips(byte id)
+    {
+        Assert.Equal(id, RawHidProtocol.TryParseSignalFire(SignalFireReport(id)));
+    }
+
+    [Fact]
+    public void TryParseSignalFire_WrongMessageType_ReturnsNull()
+    {
+        Assert.Null(RawHidProtocol.TryParseSignalFire(KeyEventReport(0, true)));
+    }
+
+    [Fact]
+    public void TryParseSignalFire_ShortBuffer_ReturnsNull()
+    {
+        Assert.Null(RawHidProtocol.TryParseSignalFire(new byte[] { HidConstants.Signal.Fire }));
+    }
 }

@@ -129,6 +129,18 @@ public static class RawHidProtocol
             Effect: payload[6]);
     }
 
+    /// <summary>
+    /// Parses a 0xC0 <c>signal.fire</c> report into its opaque host-defined id
+    /// (byte 1). Fire-and-forget, no payload beyond the id. Returns null if the
+    /// buffer isn't a signal-fire report.
+    /// </summary>
+    public static byte? TryParseSignalFire(ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length < 2) return null;
+        if (payload[0] != HidConstants.Signal.Fire) return null;
+        return payload[1];
+    }
+
     private static string ReadNullTerminatedString(ReadOnlySpan<byte> bytes)
     {
         var end = bytes.IndexOf((byte)0);
