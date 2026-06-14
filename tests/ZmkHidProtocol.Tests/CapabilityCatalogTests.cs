@@ -54,15 +54,15 @@ public class CapabilityCatalogTests
     [InlineData(HidConstants.PointingAction.SnipeSet)]
     [InlineData(HidConstants.PointingAction.DragScrollSet)]
     public void SnipeAndDragScroll_AreToggles(byte actionByte)
-        => Assert.Equal(CapabilityCatalog.PointingValueKind.Toggle, CapabilityCatalog.ValueKindByByte[actionByte]);
+        => Assert.Equal(ValueKind.Toggle, CapabilityCatalog.ValueKindByByte[actionByte]);
 
     [Fact]
     public void DpiSet_IsCount()
-        => Assert.Equal(CapabilityCatalog.PointingValueKind.Count,
+        => Assert.Equal(ValueKind.Count,
             CapabilityCatalog.ValueKindByByte[HidConstants.PointingAction.DpiSet]);
 
     [Fact]
     public void DpiSetIndex_IsIndex()
-        => Assert.Equal(CapabilityCatalog.PointingValueKind.Index,
+        => Assert.Equal(ValueKind.Index,
             CapabilityCatalog.ValueKindByByte[HidConstants.PointingAction.DpiSetIndex]);
 }
