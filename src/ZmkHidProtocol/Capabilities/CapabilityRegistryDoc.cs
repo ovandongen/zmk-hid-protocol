@@ -59,7 +59,7 @@ public static class CapabilityRegistryDoc
         PayloadShape.LayerSetBitmask => "`[1..4]` active-layer bitmask uint32 LE",
         PayloadShape.RgbSetMask => "`[1]` mask, `[2]` on, `[3..4]` hue uint16 LE, `[5]` sat, `[6]` val, `[7]` effect",
         PayloadShape.RgbSetKey => "`[1]` key index, `[2..3]` hue uint16 LE, `[4]` sat, `[5]` val",
-        PayloadShape.LayerStateBitmask => "`[6..9]` active-layer bitmask uint32 LE",
+        PayloadShape.LayerStateBitmask => "`[1]` format marker = 0x04, `[2..5]` default-layer bitmask uint32 LE (single bit), `[6..9]` active-layer bitmask uint32 LE",
         PayloadShape.KeyEvent => "`[2]` matrix position, `[3]` pressed (0/1)",
         PayloadShape.RgbState => "`[1]` on, `[2..3]` hue uint16 LE, `[4]` sat, `[5]` val, `[6]` effect",
         PayloadShape.SignalId => "`[1]` opaque id",

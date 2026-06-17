@@ -82,6 +82,8 @@ public class LayerStateTrackerTests
         var t = new LayerStateTracker();
         var report = new byte[HidConstants.ReportSize];
         report[0] = HidConstants.Outbound.LayerState;
+        report[1] = HidConstants.Outbound.LayerStateFormat; // viz-format marker
+        report[2] = 0b0000_0001; // base/default layer (bytes 2-5 LE, single bit)
         // bytes 6-9 little-endian
         report[6] = 0b0010_0000; // bit 5 set
         t.OnReport(report);

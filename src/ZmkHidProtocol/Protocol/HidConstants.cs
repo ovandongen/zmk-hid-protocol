@@ -13,6 +13,14 @@ public static class HidConstants
     public static class Outbound
     {
         public const byte LayerState = 0xFF;
+
+        /// <summary>
+        /// The viz-format marker firmware writes at byte 1 of a <see cref="LayerState"/>
+        /// report. Doubles as the discriminator against VIA <c>id_unhandled</c> echoes,
+        /// which also lead with 0xFF but carry a 0x01–0x15 command id there instead.
+        /// </summary>
+        public const byte LayerStateFormat = 0x04;
+
         public const byte KeyEvent = 0xF1;
         public const byte DeviceInfo = 0xFE;
         public const byte ConfigId = 0xFA;

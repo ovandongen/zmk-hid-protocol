@@ -36,7 +36,13 @@ public enum PayloadShape
 
     // ── Telemetry (device→host notify) byte layouts ──────────────────────────
 
-    /// <summary><c>[6..9]</c> active-layer bitmask uint32 LE. <c>core.layer.changed</c> (0xFF notify).</summary>
+    /// <summary>
+    /// <c>[1]</c> format marker = <c>0x04</c>, <c>[2..5]</c> default-layer bitmask uint32 LE
+    /// (a single bit), <c>[6..9]</c> active-layer bitmask uint32 LE. <c>core.layer.changed</c>
+    /// (0xFF notify). Emitters MUST write the marker and a single-bit default mask: the host
+    /// validates both to disambiguate this report from a VIA <c>id_unhandled</c> echo (which
+    /// also leads with 0xFF) and drops the report if either is absent.
+    /// </summary>
     LayerStateBitmask,
 
     /// <summary><c>[2]</c> matrix position, <c>[3]</c> pressed (0/1). <c>core.keyboard.key.event</c> (0xF1 notify).</summary>

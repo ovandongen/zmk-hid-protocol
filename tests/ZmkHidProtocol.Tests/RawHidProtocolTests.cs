@@ -89,6 +89,33 @@ public class RawHidProtocolTests
     }
 
     [Theory]
+    [InlineData((byte)0x01)] // VIA id_get_protocol_version
+    [InlineData((byte)0x02)] // VIA id_get_keyboard_value
+    [InlineData((byte)0x15)] // top of VIA's command range
+    public void TryParseLayerState_ViaEchoMarker_ReturnsNull(byte viaCommandId)
+    {
+        // A VIA id_unhandled reply leads with 0xFF but puts the rejected
+        // command id (0x01–0x15) at [1] instead of the viz-format marker.
+        var report = LayerStateReport(0x00000001u);
+        report[1] = viaCommandId;
+        Assert.Null(RawHidProtocol.TryParseLayerState(report));
+        Assert.Null(RawHidProtocol.TryParseLayerStateBitmask(report));
+    }
+
+    [Theory]
+    [InlineData(0x00000000u)] // no default layer
+    [InlineData(0x00000003u)] // multiple bits — not a single default layer
+    public void TryParseLayerState_NonSingleBitBaseMask_ReturnsNull(uint baseMask)
+    {
+        // Even with the correct [1]=0x04 marker, a base-layer field that isn't
+        // exactly one bit (the lone-0x04 VIA-collision residual) is rejected.
+        var report = LayerStateReport(0x00000001u);
+        BinaryPrimitives.WriteUInt32LittleEndian(report.AsSpan(2, 4), baseMask);
+        Assert.Null(RawHidProtocol.TryParseLayerState(report));
+        Assert.Null(RawHidProtocol.TryParseLayerStateBitmask(report));
+    }
+
+    [Theory]
     [InlineData(0, true)]
     [InlineData(0, false)]
     [InlineData(59, true)]

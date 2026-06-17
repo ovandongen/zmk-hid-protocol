@@ -20,6 +20,12 @@ public static class RawHidProtocol
     {
         if (payload.Length < 10) return null;
         if (payload[0] != HidConstants.Outbound.LayerState) return null;
+        // Reject VIA id_unhandled echoes: a genuine layer-state report carries the
+        // viz-format marker at [1] and a single-bit default-layer mask at [2..5];
+        // a VIA echo has a 0x01–0x15 command id at [1] and arbitrary params after.
+        if (payload[1] != HidConstants.Outbound.LayerStateFormat) return null;
+        var baseMask = BinaryPrimitives.ReadUInt32LittleEndian(payload[2..6]);
+        if (baseMask == 0 || (baseMask & (baseMask - 1)) != 0) return null; // exactly one default layer
         return BinaryPrimitives.ReadUInt32LittleEndian(payload[6..10]);
     }
 
