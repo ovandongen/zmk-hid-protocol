@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using HidApi;
 using ZmkHidProtocol.Diagnostics;
 using ZmkHidProtocol.Protocol;
@@ -18,6 +19,9 @@ public sealed class RawHidLayerSource : ILayerSource, ICommandSink
 {
     private const int ReconnectDelayMs = 2000;
     private const int ReadTimeoutMs = 250;
+    // Liveness-probe budget per candidate endpoint when more than one FF60/61
+    // device matches (USB + BLE up at once, or a stale duplicate BLE bond).
+    private const int ProbeTimeoutMs = 600;
 
     private CancellationTokenSource? _cts;
     private Task? _runTask;
@@ -114,25 +118,32 @@ public sealed class RawHidLayerSource : ILayerSource, ICommandSink
 
         while (!ct.IsCancellationRequested)
         {
-            HidDeviceInfo? info = TryFindDevice();
-            if (info is null)
+            var candidates = FindCandidates();
+            if (candidates.Count == 0)
             {
                 _rescan.Reset();
                 try { _rescan.Wait(ReconnectDelayMs, ct); } catch (OperationCanceledException) { return; }
                 continue;
             }
 
-            Device? device = null;
+            HidDeviceInfo? info = SelectLiveDevice(candidates, buffer, ct, out Device? device);
+            if (ct.IsCancellationRequested) { try { device?.Dispose(); } catch { } return; }
+            if (info is null || device is null)
+            {
+                _rescan.Reset();
+                try { _rescan.Wait(ReconnectDelayMs, ct); } catch (OperationCanceledException) { return; }
+                continue;
+            }
+
             try
             {
-                lock (HidGlobalLock.Gate) device = info.ConnectToDevice();
                 _device = device;
                 OpenDevicePath = info.Path;
 
                 _sourceName = string.IsNullOrWhiteSpace(info.ProductString)
                     ? "Raw HID"
                     : $"Raw HID ({info.ProductString})";
-                LibLog.Info("RawHid", $"Connected: {_sourceName}");
+                LibLog.Info("RawHid", $"Connected: {_sourceName} (path={info.Path})");
                 SetConnected(true);
                 _lastEnumerationKey = null;
 
@@ -196,7 +207,13 @@ public sealed class RawHidLayerSource : ILayerSource, ICommandSink
         ConnectionChanged?.Invoke();
     }
 
-    private HidDeviceInfo? TryFindDevice()
+    /// <summary>
+    /// Returns every FF60/61 endpoint that also passes the active matcher.
+    /// More than one is normal when USB and BLE are connected at once, or when
+    /// a stale duplicate BLE bond lingers — the caller probes to pick the live
+    /// one rather than trusting enumeration order.
+    /// </summary>
+    private List<HidDeviceInfo> FindCandidates()
     {
         List<HidDeviceInfo> devices;
         // Serialize against the capability bus's enumerate loop — concurrent
@@ -206,12 +223,13 @@ public sealed class RawHidLayerSource : ILayerSource, ICommandSink
         catch (Exception ex)
         {
             LibLog.Debug("RawHid", $"Hid.Enumerate failed: {ex.Message}");
-            return null;
+            return new List<HidDeviceInfo>();
         }
 
         var matcher = _matcher;
         var matcherMatches = new List<HidDeviceInfo>();
         var allDevices = new List<HidDeviceInfo>();
+        var endpoints = new List<HidDeviceInfo>();
         foreach (var d in devices)
         {
             allDevices.Add(d);
@@ -219,12 +237,139 @@ public sealed class RawHidLayerSource : ILayerSource, ICommandSink
                 continue;
             matcherMatches.Add(d);
             if (d.UsagePage == HidConstants.UsagePage && d.Usage == HidConstants.UsageId)
-                return d;
+                endpoints.Add(d);
         }
 
-        LogFirstScanDump(allDevices);
-        LogEnumerationOnce(allDevices, matcherMatches);
+        if (endpoints.Count > 1)
+        {
+            LibLog.Info("RawHid",
+                $"Discovery: {endpoints.Count} FF60/61 endpoints matched — probing for the live one.");
+            foreach (var d in endpoints)
+                LibLog.Info("RawHid",
+                    $"  candidate: name=\"{d.ProductString ?? "?"}\" iface={d.InterfaceNumber} path={d.Path}");
+        }
+
+        if (endpoints.Count == 0)
+        {
+            LogFirstScanDump(allDevices);
+            LogEnumerationOnce(allDevices, matcherMatches);
+        }
+        return endpoints;
+    }
+
+    /// <summary>
+    /// Opens <paramref name="info"/> under the global hidapi gate — concurrent
+    /// open aborts the process on macOS, so every open in this class flows
+    /// through here. Reads/writes on the returned handle are per-device and must
+    /// not take the gate.
+    /// </summary>
+    private static Device OpenGated(HidDeviceInfo info)
+    {
+        lock (HidGlobalLock.Gate) return info.ConnectToDevice();
+    }
+
+    /// <summary>
+    /// Opens the candidate endpoints and returns the first that answers a
+    /// liveness probe (0xFD → 0xFE), so a dead duplicate bond — which accepts
+    /// writes but never delivers input reports — is skipped. A single candidate
+    /// is trusted without probing (firmware that doesn't implement 0xFD still
+    /// works). If several match but none answer, falls back to the first opened
+    /// so the app degrades to the old "first wins" behaviour rather than nothing.
+    /// </summary>
+    private HidDeviceInfo? SelectLiveDevice(
+        List<HidDeviceInfo> candidates, byte[] buffer, CancellationToken ct, out Device? chosen)
+    {
+        chosen = null;
+
+        if (candidates.Count == 1)
+        {
+            try { chosen = OpenGated(candidates[0]); return candidates[0]; }
+            catch (Exception ex)
+            {
+                LibLog.Warn("RawHid", $"Open failed (path={candidates[0].Path}): {ex.Message}");
+                return null;
+            }
+        }
+
+        Device? fallback = null;
+        HidDeviceInfo? fallbackInfo = null;
+        foreach (var info in candidates)
+        {
+            if (ct.IsCancellationRequested) break;
+
+            Device device;
+            try { device = OpenGated(info); }
+            catch (Exception ex)
+            {
+                LibLog.Warn("RawHid", $"Open failed (path={info.Path}): {ex.Message}");
+                continue;
+            }
+
+            if (ProbeAlive(device, buffer, ct))
+            {
+                LibLog.Info("RawHid", $"Probe: endpoint responded (path={info.Path}).");
+                if (fallback is not null) { try { fallback.Dispose(); } catch { } }
+                chosen = device;
+                return info;
+            }
+
+            LibLog.Info("RawHid", $"Probe: no response (path={info.Path}).");
+            if (fallback is null) { fallback = device; fallbackInfo = info; }
+            else { try { device.Dispose(); } catch { } }
+        }
+
+        if (ct.IsCancellationRequested) { try { fallback?.Dispose(); } catch { } return null; }
+
+        if (fallback is not null)
+        {
+            LibLog.Warn("RawHid",
+                $"Probe: no endpoint answered; falling back to first (path={fallbackInfo!.Path}).");
+            chosen = fallback;
+            return fallbackInfo;
+        }
         return null;
+    }
+
+    /// <summary>
+    /// Sends a 0xFD device-info request and waits up to <see cref="ProbeTimeoutMs"/>
+    /// for the matching 0xFE reply. Reports seen in the meantime are discarded —
+    /// the firmware re-emits layer state on the next change, and connect-time
+    /// resync covers the current layer.
+    /// </summary>
+    private bool ProbeAlive(Device device, byte[] buffer, CancellationToken ct)
+    {
+        try
+        {
+            // Leading 0x00 is the report-ID byte hidapi expects (firmware uses
+            // report ID 0); payload[0] = 0xFD GetDeviceInfo.
+            var req = new byte[HidConstants.ReportSize + 1];
+            req[1] = HidConstants.Inbound.GetDeviceInfo;
+            device.Write(req);
+        }
+        catch (Exception ex)
+        {
+            LibLog.Debug("RawHid", $"Probe write failed: {ex.Message}");
+            return false;
+        }
+
+        var sw = Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < ProbeTimeoutMs && !ct.IsCancellationRequested)
+        {
+            int n;
+            try { n = device.ReadTimeout(buffer, ReadTimeoutMs); }
+            catch (Exception ex)
+            {
+                LibLog.Debug("RawHid", $"Probe read failed: {ex.Message}");
+                return false;
+            }
+            if (n <= 0) continue;
+
+            int offset = (n == HidConstants.ReportSize + 1) ? 1 : 0;
+            var payload = buffer.AsSpan(offset, n - offset);
+            if (payload.Length >= 1 && payload[0] == HidConstants.Outbound.DeviceInfo)
+                return true;
+        }
+        return false;
     }
 
     private void LogFirstScanDump(List<HidDeviceInfo> all)
