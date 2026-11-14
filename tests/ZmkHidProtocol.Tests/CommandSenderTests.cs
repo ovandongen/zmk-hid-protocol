@@ -149,6 +149,24 @@ public class CommandSenderTests
     }
 
     [Fact]
+    public async Task FailedSend_LeavesNoWaiterBehind_TheNextQueryGetsTheReply()
+    {
+        // A write on a handle that is gone (a board rebooting after a flash)
+        // throws; that query's waiter must not steal the next query's answer.
+        var fake = new FakeTransport { FailNextSend = true };
+        using var sender = new CommandSender(fake, fake);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => sender.QueryConfigIdAsync(LongTimeout, CancellationToken.None));
+
+        var task = sender.QueryConfigIdAsync(LongTimeout, CancellationToken.None);
+        await fake.WriteObserved;
+        fake.RaiseReport(BuildConfigId("cosmos"));
+
+        Assert.Equal("cosmos", await task);
+    }
+
+    [Fact]
     public void Dispose_UnsubscribesFromReportReceived()
     {
         var fake = new FakeTransport();
@@ -189,9 +207,18 @@ public class CommandSenderTests
         public void ResetWriteObserved() =>
             _writeObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
+        /// <summary>The next send throws, like a write on a handle that is gone.</summary>
+        public bool FailNextSend { get; set; }
+
         public ValueTask SendReportAsync(ReadOnlyMemory<byte> report, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (FailNextSend)
+            {
+                FailNextSend = false;
+                throw new InvalidOperationException("device is not open");
+            }
+
             LastSent = report.ToArray();
             _writeObserved.TrySetResult();
             return ValueTask.CompletedTask;

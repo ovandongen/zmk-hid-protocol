@@ -83,7 +83,18 @@ public sealed class CommandSender : IDisposable
 
         var report = new byte[HidConstants.ReportSize];
         report[0] = requestOpcode;
-        await _sink.SendReportAsync(report, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _sink.SendReportAsync(report, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // The request never went out, so no answer belongs to this waiter:
+            // cancel it, or the next reply completes it instead of the query
+            // that is actually waiting (CompleteFirst skips cancelled ones).
+            tcs.TrySetCanceled();
+            throw;
+        }
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(timeout);
