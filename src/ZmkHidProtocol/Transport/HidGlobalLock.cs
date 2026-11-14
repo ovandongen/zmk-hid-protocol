@@ -15,8 +15,11 @@ namespace ZmkHidProtocol.Transport;
 /// <para>Reads and writes on an <em>already-open</em> handle are per-device and
 /// must <b>not</b> take this lock — the read loop blocks for the read timeout and
 /// would otherwise stall all discovery.</para>
+///
+/// <para>Public so a host app that enumerates hidapi devices itself (e.g. to
+/// read a device's bus type) takes the same gate as the loops in here.</para>
 /// </summary>
-internal static class HidGlobalLock
+public static class HidGlobalLock
 {
     /// <summary>Hold around <c>Hid.Enumerate()</c> (materialize inside) and device open only.</summary>
     public static readonly object Gate = new();
